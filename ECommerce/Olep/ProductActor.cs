@@ -33,8 +33,19 @@ namespace ECommerce.Olep
 
         private async Task ProcessInventoryRequest(Inventory inventory, StreamSequenceToken token)
         {
-            // TODO implement this functionality
-            throw new ApplicationException();
+            try
+            {
+                var ifEnoughQnt = inventory.quantity < quantity;
+                if (ifEnoughQnt) quantity = quantity - inventory.quantity;
+                else quantity = quantity + (inventory.quantity * 2) - inventory.quantity;
+                var outStream = streamProvider.GetStream<Outcome>(Constants.OutcomeNamespace, "0");
+                var outcome = new Outcome(inventory.productId, id, inventory.quantity * inventory.price, Status.OK);
+                await outStream.OnNextAsync(outcome);
+            }
+            catch (Exception e)
+            {
+                throw new ApplicationException(e.ToString());
+            }
         }
 
         public Task<double> GetPrice()

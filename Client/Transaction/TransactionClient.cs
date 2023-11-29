@@ -5,7 +5,7 @@ namespace Client.Transaction
     internal class TransactionClient
     {
 
-        int numCustomerActor = 10;
+        int numCustomerActor = 20;
         int numProductActor = 100;
 
         // for experiment setting

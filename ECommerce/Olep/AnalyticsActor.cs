@@ -32,14 +32,40 @@ namespace ECommerce.Olep
 
         private Task UpdateAsync(Outcome outcome, StreamSequenceToken token = null)
         {
-            // TODO implement this functionality
-            throw new ApplicationException();
+            try
+            {
+                if (outcome.status == Status.INSUFFICIENT_BALANCE) return Task.CompletedTask;
+                var keys = query.Keys;
+                if (keys.Contains(outcome.customerId))
+                {
+                    var key = outcome.customerId;
+                    var spend = query[key];
+                    query[key] = spend + outcome.total;
+                    return Task.CompletedTask;
+                }
+                query.Add(outcome.customerId, outcome.total);
+                return Task.CompletedTask;
+            }
+            catch (Exception e) 
+            {
+                throw new ApplicationException(e.ToString());
+            }
         }
 
         public async Task<List<KeyValuePair<long, double>>> Top10()
         {
-            // TODO implement this functionality
-            throw new ApplicationException();
+            try 
+            {
+                var top10 = query.OrderByDescending(pair => pair.Value)
+                        .Take(10)
+                        .ToList();
+
+                return top10;
+            }
+            catch (Exception e) 
+            {
+                throw new ApplicationException(e.ToString());
+            }
         }
 
     }
