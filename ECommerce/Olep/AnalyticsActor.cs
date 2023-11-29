@@ -56,9 +56,15 @@ namespace ECommerce.Olep
         {
             try 
             {
-                var top10 = query.OrderByDescending(pair => pair.Value)
-                        .Take(10)
-                        .ToList();
+                // List<KeyValuePair<long, double>> top10 = new List<KeyValuePair<long, double>>();
+                // TODO: Add logic to populate the 'top10' list
+
+                var top10 = await Task.Run(() =>
+                {
+                    return query.OrderByDescending(pair => pair.Value)
+                                .Take(10)
+                                .ToList();
+                });
 
                 return top10;
             }

@@ -4,6 +4,7 @@ using Utilities;
 using Orleans.Streams;
 using ECommerce.Olep.Schema;
 using System.Text;
+using System.ComponentModel;
 
 namespace Client.Transaction
 {
@@ -12,6 +13,8 @@ namespace Client.Transaction
         readonly int numCustomerActor;
         readonly int numProductActor;
         IClusterClient client;
+        private List<IAnalyticsActor> analyticsActors;
+        private List<bool> analyticsActorsStatuses;
         bool isClientConnected = false;
       
         IDiscreteDistribution customerDistribution;       // which customer send the request
@@ -45,11 +48,19 @@ namespace Client.Transaction
             isClientConnected = true;
         }
 
-        public async Task InitAllActors()
+        public async Task InitAllActors(int numAnalyticsActor = 10)
         {
-
-            var analyticsActor = client.GetGrain<IAnalyticsActor>(0);
-            await analyticsActor.Init();
+            // Initialize the grains and their statuses
+            analyticsActors = new List<IAnalyticsActor>(numAnalyticsActor);
+            analyticsActorsStatuses = new List<bool>(numAnalyticsActor);
+            for (int i = 0; i < numAnalyticsActor; i++)
+            {
+                analyticsActors.Add(client.GetGrain<IAnalyticsActor>(i));
+                analyticsActorsStatuses.Add(false);
+                await analyticsActors[i].Init();
+            }
+            // var analyticsActor = client.GetGrain<IAnalyticsActor>(0);
+            // await analyticsActor.Init();
 
             var tasks = new List<Task>();
             for (int i = 0; i < numCustomerActor; i++)
@@ -107,16 +118,48 @@ namespace Client.Transaction
 
         public async Task<string> GetTopTen()
         {
-            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(0).Top10();
             StringBuilder sb = new StringBuilder();
-            foreach(KeyValuePair<long, double> kv in res)
+            // Find the first grain that is not currently calculating the top 10
+            for (int i = 0; i < analyticsActors.Count; i++)
             {
-                sb.Append (kv.Key);
-                sb.Append(" : ");
-                sb.Append(kv.Value);
-                sb.AppendLine();
+                if (!analyticsActorsStatuses[i])
+                {
+                    // Mark the grain as busy
+                    analyticsActorsStatuses[i] = true;
+
+                    // Ask the grain to calculate the top 10
+                    List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(i).Top10();
+                    foreach(KeyValuePair<long, double> kv in res)
+                    {
+                        sb.Append (kv.Key);
+                        sb.Append(" : ");
+                        sb.Append(kv.Value);
+                        sb.AppendLine();
+                    }
+                    
+                    // Mark the grain as free
+                    analyticsActorsStatuses[i] = false;
+
+                    return sb.ToString();
+                }
             }
+            // If all grains are busy, return an empty list / or just wait?
+            
+            sb.Append("All grains are busy!");
             return sb.ToString();
+
+    
+            
+            // List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(0).Top10();
+            // StringBuilder sb = new StringBuilder();
+            // foreach(KeyValuePair<long, double> kv in res)
+            // {
+            //     sb.Append (kv.Key);
+            //     sb.Append(" : ");
+            //     sb.Append(kv.Value);
+            //     sb.AppendLine();
+            // }
+            // return sb.ToString();
         }
 
     }
