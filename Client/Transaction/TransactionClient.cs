@@ -1,26 +1,29 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Threading.Channels;
 
 namespace Client.Transaction
 {
     internal class TransactionClient
     {
+        int concurrencyLevel = 20;
 
-        int numCustomerActor = 200;
+        int numCustomerActor = 2000;
         int numProductActor = 100;
 
         // for experiment setting
         int numCustomerThread = 8;
-        int numGetTopTenThread = 8;
+        // int numGetTopTenThread = 8;
 
         TimeSpan runTime = TimeSpan.FromSeconds(10);    // use this time to control how long time the experiment will run
         TimeSpan topTenTaskRunTime = TimeSpan.FromSeconds(10);
 
         CountdownEvent allThreadsStart;
         CountdownEvent allThreadsAreDone;
-        CountdownEvent getTopTenFinished;
 
-        ConcurrentBag<TimeSpan> topTenTaskEndToEndLatency = new ConcurrentBag<TimeSpan>();
+        ConcurrentBag<Tuple<DateTime, DateTime>> topTenTaskLatency = new ConcurrentBag<Tuple<DateTime, DateTime>>();
+
+        BlockingCollection<byte> resultQueue = new BlockingCollection<byte>();
 
         WorkloadGenerator workload;
 
@@ -67,35 +70,65 @@ namespace Client.Transaction
             Console.WriteLine(top10);
             Console.WriteLine("\n ***********************************************************************");
 
+
+
+
+
             // ================================================================================================================
-            // STEP 5: spawn multiple threads to get top-10 customers to stress analytics actor
-            getTopTenFinished = new CountdownEvent(1);
+            // STEP 5: start tasks to get top-10 customers to stress analytics actor            
+            Console.WriteLine($"Concurrency level = {concurrencyLevel}");
 
-            allThreadsStart = new CountdownEvent(numGetTopTenThread);
-            allThreadsAreDone = new CountdownEvent(numGetTopTenThread);
+            int submitCount = 0;
+            var tasks = new List<Task>(concurrencyLevel);
 
-            Console.WriteLine($"Spawning {numGetTopTenThread} threads to get top-10 customers");
-            for (int i = 0; i < numGetTopTenThread; i++)
+            var cancellationToken = new CancellationTokenSource();
+
+            Stopwatch s = new Stopwatch();
+            s.Start();
+            // get the time stamp of the start of the experiment
+            DateTime startTime = DateTime.Now;
+            while (submitCount < concurrencyLevel)
             {
-                var thread = new Thread(GetTopTenAsync);
-                thread.Start(i);
+                tasks.Add(Task.Run(() => GetTopTenAsync(cancellationToken.Token)));
+                submitCount++;
             }
-            Thread.Sleep(this.topTenTaskRunTime);
-            getTopTenFinished.Signal();
-
-            // calculate the average end to end latency of GetTopTen()
-            var totalEndToEndLatency = TimeSpan.Zero;
-            foreach (var time in this.topTenTaskEndToEndLatency)
+            while (s.Elapsed < topTenTaskRunTime)
             {
-                totalEndToEndLatency += time;
+                tasks.Add(Task.Run(() => GetTopTenAsync(cancellationToken.Token)));
+                submitCount++;
+                while (resultQueue.TryTake(out _) && s.Elapsed < topTenTaskRunTime) { }
             }
-            var averageExecutionTime = totalEndToEndLatency / this.topTenTaskEndToEndLatency.Count;
+            DateTime endTime = startTime.Add(topTenTaskRunTime);
+
+
+            // clean up the remaining tasks
+            cancellationToken.Cancel();
+
+            // calculate the average end to end latency and throughput of GetTopTen() from topTenTaskLatency            
+            var averageExecutionTime = TimeSpan.Zero;
+            int finishedTaskCount = 0;
+            foreach (var tuple in topTenTaskLatency)
+            {
+                // only conut if the finish time of the task is before the end time of the experiment
+                if (tuple.Item2 < endTime)
+                {
+                    averageExecutionTime += (tuple.Item2 - tuple.Item1);
+                    finishedTaskCount++;
+                }
+            }
+
+            averageExecutionTime = TimeSpan.FromMilliseconds(averageExecutionTime.TotalMilliseconds / finishedTaskCount);
+            var throughput = finishedTaskCount / topTenTaskRunTime.TotalSeconds;
+
+            double averageExecutionTimeInMilliseconds = averageExecutionTime.TotalMilliseconds;
 
             Console.WriteLine("\n ***********************************************************************");
-            Console.WriteLine($"The average end to end latency of GetTopTen() is {averageExecutionTime.TotalMilliseconds} ms");
+            Console.WriteLine($"Concurrency level = {concurrencyLevel} Average execution time = {averageExecutionTimeInMilliseconds} ms Throughput = {throughput}");
             Console.WriteLine("\n ***********************************************************************");
 
             Console.WriteLine("\n\nThe experiment is done. ");
+            Console.WriteLine("Press any key to exit...");
+            Console.ReadKey();
         }
 
         // ================================================================================================================
@@ -123,28 +156,30 @@ namespace Client.Transaction
             allThreadsAreDone.Signal();
         }
 
-        async void GetTopTenAsync(object obj)
+        async void GetTopTenAsync(CancellationToken cancellationToken)
         {
-            var thread = (int)obj;
-            var numEmitTransaction = 0;
             // var workload = new WorkloadGenerator(numCustomerActor, numProductActor);
 
-            allThreadsStart.Signal();
-            allThreadsStart.Wait();      // make sure all threads start at the same time
-
-            while (!getTopTenFinished.IsSet)
-            {
-                numEmitTransaction++;
-                var stopwatch = Stopwatch.StartNew();                
-                await workload.GetTopTen();  // submit one transaction a time
-                stopwatch.Stop();
-
-                this.topTenTaskEndToEndLatency.Add(stopwatch.Elapsed);
-            }
-
-            Console.WriteLine($"Thread {thread}: " +
-                              $"Number of getTop10 transactions emitted() = {numEmitTransaction} ");
+            DateTime start = DateTime.Now;
+            if (cancellationToken.IsCancellationRequested) return;
+            await workload.GetTopTen();
+            if (cancellationToken.IsCancellationRequested) return;
+            DateTime end = DateTime.Now;
+            this.resultQueue.Add(1);
+            this.topTenTaskLatency.Add(new Tuple<DateTime, DateTime>(start, end));
         }
 
     }
 }
+
+// dotnet run --project Server
+// Concurrency level = 1 Average execution time = 771.9999 ms Throughput = 2232.3
+// Concurrency level = 5 Average execution time = 834.5639 ms Throughput = 2000.4
+// Concurrency level = 10 Average execution time = 934.9092 ms Throughput = 2057.2
+// Concurrency level = 20 Average execution time = 784.5506 ms Throughput = 2135.1
+
+// Concurrency level = 1 Average execution time = 2034.9743 ms Throughput = 14.5
+// Concurrency level = 5 Average execution time = 1524.58 ms Throughput = 13.7
+// Concurrency level = 10 Average execution time = 1609.6113 ms Throughput = 16.7
+// Concurrency level = 20 Average execution time = 913.3378 ms Throughput = 21.7
+
