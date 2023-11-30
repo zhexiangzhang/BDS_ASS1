@@ -13,6 +13,7 @@ namespace Client.Transaction
         readonly int numProductActor;
         IClusterClient client;
         bool isClientConnected = false;
+        Guid mainAnalyticsActorGuid = Guid.NewGuid();
       
         IDiscreteDistribution customerDistribution;       // which customer send the request
         IDiscreteDistribution productDistribution;        // which product to buy
@@ -47,8 +48,7 @@ namespace Client.Transaction
 
         public async Task InitAllActors()
         {
-
-            var analyticsActor = client.GetGrain<IAnalyticsActor>(0);
+            var analyticsActor = client.GetGrain<IAnalyticsActor>(mainAnalyticsActorGuid);
             await analyticsActor.Init();
 
             var tasks = new List<Task>();
@@ -107,7 +107,7 @@ namespace Client.Transaction
 
         public async Task<string> GetTopTen()
         {
-            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(0).Top10();
+            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(mainAnalyticsActorGuid).Top10();
             StringBuilder sb = new StringBuilder();
             foreach(KeyValuePair<long, double> kv in res)
             {

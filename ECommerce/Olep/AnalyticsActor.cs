@@ -11,6 +11,7 @@ namespace ECommerce.Olep
     {
 
         private readonly Dictionary<long, double> query;
+        private IStreamProvider streamProvider;
 
         public AnalyticsActor()
         {
@@ -52,20 +53,61 @@ namespace ECommerce.Olep
             }
         }
 
-        public async Task<List<KeyValuePair<long, double>>> Top10()
+        // public async Task Top10()
+        // {   
+        //     try 
+        //     {
+        //         var top10 = query.OrderByDescending(pair => pair.Value)
+        //                 .Take(10)
+        //                 .ToList();
+        
+        //         client = await OrleansClientManager.GetClient();
+        //         async void InitiateClient()
+        
+
+        //         // Get a reference to another AnalyticsActor
+        //         var newTop10Actor = client.GetGrain<IAnalyticsActor>(Guid.NewGuid());
+
+        //         // Start the other actor's Top10ToStream method without awaiting it
+        //         Task.Run(() => newTop10Actor.Top10ToStream(query));
+        //     }
+        //     catch (Exception e) 
+        //     {
+        //         throw new ApplicationException(e.ToString());
+        //     }
+        // }
+
+        public async Task Top10()
         {
             try 
             {
-                var top10 = query.OrderByDescending(pair => pair.Value)
-                        .Take(10)
-                        .ToList();
+                // Get a reference to another AnalyticsActor
+                var newAnalyticsActor = GrainFactory.GetGrain<IAnalyticsActor>(Guid.NewGuid());
 
-                return top10;
+                // Initiate the new actor
+                await newAnalyticsActor.Init();
+
+                // Start the other actor's Top10ToStream method without awaiting it
+                Task.Run(() => newAnalyticsActor.Top10ToStream());
             }
             catch (Exception e) 
             {
                 throw new ApplicationException(e.ToString());
             }
+        }
+
+        public async Task Top10ToStream()
+        {
+            var top10 = query.OrderByDescending(pair => pair.Value)
+                        .Take(10)
+                        .ToList();
+
+            // Get a reference to the stream
+            var streamProvider = GetStreamProvider(Constants.DefaultStreamProvider);
+            var stream = streamProvider.GetStream<List<KeyValuePair<long, double>>>(this.GetPrimaryKey(), "Top10");
+
+            // Output the top10 data to the stream
+            await stream.OnNextAsync(top10);
         }
 
     }
