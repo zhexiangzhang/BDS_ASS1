@@ -1,26 +1,35 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace Client.Transaction
 {
     internal class TransactionClient
     {
 
-        int numCustomerActor = 20;
+        int numCustomerActor = 200;
         int numProductActor = 100;
 
         // for experiment setting
         int numCustomerThread = 8;
+        int numGetTopTenThread = 8;
+
         TimeSpan runTime = TimeSpan.FromSeconds(10);    // use this time to control how long time the experiment will run
+        TimeSpan topTenTaskRunTime = TimeSpan.FromSeconds(10);
 
         CountdownEvent allThreadsStart;
         CountdownEvent allThreadsAreDone;
+        CountdownEvent getTopTenFinished;
+
+        ConcurrentBag<TimeSpan> topTenTaskEndToEndLatency = new ConcurrentBag<TimeSpan>();
+
+        WorkloadGenerator workload;
 
         public async Task RunClient()
         {
 
             // ================================================================================================================
             // STEP 1: init all actors
-            var workload = new WorkloadGenerator(numCustomerActor, numProductActor);
+            workload = new WorkloadGenerator(numCustomerActor, numProductActor);
             await workload.InitAllActors();
             Console.WriteLine("\n ***********************************************************************");
             Console.WriteLine($"#customer = {numCustomerActor}, #product = {numProductActor}");
@@ -58,7 +67,35 @@ namespace Client.Transaction
             Console.WriteLine(top10);
             Console.WriteLine("\n ***********************************************************************");
 
-            Console.WriteLine("The experiment is done. ");
+            // ================================================================================================================
+            // STEP 5: spawn multiple threads to get top-10 customers to stress analytics actor
+            getTopTenFinished = new CountdownEvent(1);
+
+            allThreadsStart = new CountdownEvent(numGetTopTenThread);
+            allThreadsAreDone = new CountdownEvent(numGetTopTenThread);
+
+            Console.WriteLine($"Spawning {numGetTopTenThread} threads to get top-10 customers");
+            for (int i = 0; i < numGetTopTenThread; i++)
+            {
+                var thread = new Thread(GetTopTenAsync);
+                thread.Start(i);
+            }
+            Thread.Sleep(this.topTenTaskRunTime);
+            getTopTenFinished.Signal();
+
+            // calculate the average end to end latency of GetTopTen()
+            var totalEndToEndLatency = TimeSpan.Zero;
+            foreach (var time in this.topTenTaskEndToEndLatency)
+            {
+                totalEndToEndLatency += time;
+            }
+            var averageExecutionTime = totalEndToEndLatency / this.topTenTaskEndToEndLatency.Count;
+
+            Console.WriteLine("\n ***********************************************************************");
+            Console.WriteLine($"The average end to end latency of GetTopTen() is {averageExecutionTime.TotalMilliseconds} ms");
+            Console.WriteLine("\n ***********************************************************************");
+
+            Console.WriteLine("\n\nThe experiment is done. ");
         }
 
         // ================================================================================================================
@@ -66,7 +103,7 @@ namespace Client.Transaction
         {
             var thread = (int)obj;
             var numEmitTransaction = 0;
-            var workload = new WorkloadGenerator(numCustomerActor, numProductActor);
+            //var workload = new WorkloadGenerator(numCustomerActor, numProductActor);
             var watch = new Stopwatch();
 
             allThreadsStart.Signal();
@@ -85,6 +122,29 @@ namespace Client.Transaction
                               $"Total time elapsed = {totalTime}");
             allThreadsAreDone.Signal();
         }
-     
+
+        async void GetTopTenAsync(object obj)
+        {
+            var thread = (int)obj;
+            var numEmitTransaction = 0;
+            // var workload = new WorkloadGenerator(numCustomerActor, numProductActor);
+
+            allThreadsStart.Signal();
+            allThreadsStart.Wait();      // make sure all threads start at the same time
+
+            while (!getTopTenFinished.IsSet)
+            {
+                numEmitTransaction++;
+                var stopwatch = Stopwatch.StartNew();                
+                await workload.GetTopTen();  // submit one transaction a time
+                stopwatch.Stop();
+
+                this.topTenTaskEndToEndLatency.Add(stopwatch.Elapsed);
+            }
+
+            Console.WriteLine($"Thread {thread}: " +
+                              $"Number of getTop10 transactions emitted() = {numEmitTransaction} ");
+        }
+
     }
 }
