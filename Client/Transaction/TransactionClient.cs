@@ -181,5 +181,9 @@ namespace Client.Transaction
 // Concurrency level = 1 Average execution time = 2034.9743 ms Throughput = 14.5
 // Concurrency level = 5 Average execution time = 1524.58 ms Throughput = 13.7
 // Concurrency level = 10 Average execution time = 1609.6113 ms Throughput = 16.7
-// Concurrency level = 20 Average execution time = 913.3378 ms Throughput = 21.7
 
+// Concurrency level = 20 Average execution time = 4951.2936 ms Throughput = 1.5
+// Concurrency level = 20 Average execution time = 178.3134 ms Throughput = 99.1 
+// Concurrency level = 20 Average execution time = 372.837 ms Throughput = 2794.2 (main)
+// Concurrency level = 20 Average execution time = 5.7549 ms Throughput = 3908.1 (random1)
+// Concurrency level = 20 Average execution time = 2.8297 ms Throughput = 5166.8 (random10)

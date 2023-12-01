@@ -23,7 +23,8 @@ namespace Client.Transaction
         private readonly BlockingCollection<int> analyticsActorsIdleQueue;
         
         bool isClientConnected = false;
-      
+        int numAnalyticsActor;
+
         IDiscreteDistribution customerDistribution;       // which customer send the request
         IDiscreteDistribution productDistribution;        // which product to buy
         IDiscreteDistribution productQtyDistribution;     // the number of items available for each product
@@ -61,7 +62,7 @@ namespace Client.Transaction
         {
             // Initialize the grains and their statuses
             analyticsActors = new List<IAnalyticsActor>(numAnalyticsActor);
-
+            this.numAnalyticsActor = numAnalyticsActor;
             // many thread can access the same  list at the same time, so we need to use thread-safe data structure            
             // analyticsActorsStatuses = new List<bool>(numAnalyticsActor);
 
@@ -129,12 +130,27 @@ namespace Client.Transaction
             return;
         }
 
-        public async Task<string> GetTopTen()
+        public async Task<string> GetTopTen3()
+        {
+            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(0).Top10();
+            StringBuilder sb = new StringBuilder();
+            foreach (KeyValuePair<long, double> kv in res)
+            {
+                sb.Append(kv.Key);
+                sb.Append(" : ");
+                sb.Append(kv.Value);
+                sb.AppendLine();
+            }
+            return sb.ToString();
+        }
+
+        public async Task<string> GetTopTen2()
         {
             StringBuilder sb = new StringBuilder();
             
             // Find the grain that is not currently calculating the top 10
             int idleAnalyticsActorId = analyticsActorsIdleQueue.Take();
+            Console.WriteLine($"idleAnalyticsActorId = {idleAnalyticsActorId}");
             List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(idleAnalyticsActorId).Top10();     
             analyticsActorsIdleQueue.Add(idleAnalyticsActorId);
             foreach (KeyValuePair<long, double> kv in res)
@@ -144,48 +160,26 @@ namespace Client.Transaction
                 sb.Append(kv.Value);
                 sb.AppendLine();
             }
+            return sb.ToString();           
+        }
+
+        public async Task<string> GetTopTen()
+        {
+            StringBuilder sb = new StringBuilder();
+
+            // choose a random number from 0 to 9:
+            int idleAnalyticsActorId = new DiscreteUniform(0, numAnalyticsActor-1, new Random()).Sample();    
+            // Find the grain that is not currently calculating the top 10            
+            Console.WriteLine($"idleAnalyticsActorId = {idleAnalyticsActorId}");
+            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(idleAnalyticsActorId).Top10();                   
+            foreach (KeyValuePair<long, double> kv in res)
+            {
+                sb.Append(kv.Key);
+                sb.Append(" : ");
+                sb.Append(kv.Value);
+                sb.AppendLine();
+            }
             return sb.ToString();
-
-            //for (int i = 0; i < analyticsactors.count; i++)
-            //{
-            //    if (!analyticsactorsstatuses[i])
-            //    {
-            //        // mark the grain as busy
-            //        analyticsactorsstatuses[i] = true;
-
-            //        // ask the grain to calculate the top 10
-            //        list<keyvaluepair<long, double>> res = await client.getgrain<ianalyticsactor>(i).top10();
-            //        foreach(keyvaluepair<long, double> kv in res)
-            //        {
-            //            sb.append (kv.key);
-            //            sb.append(" : ");
-            //            sb.append(kv.value);
-            //            sb.appendline();
-            //        }
-
-            //        // mark the grain as free
-            //        analyticsactorsstatuses[i] = false;
-
-            //        return sb.tostring();
-            //    }
-            //}
-            // If all grains are busy, return an empty list / or just wait? 【we need to measure the latency from the point we submit the transaction no matter whether the request is waiting or being processing】
-
-            //sb.Append("All grains are busy!");
-            //return sb.ToString();
-
-
-
-            // List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(0).Top10();
-            // StringBuilder sb = new StringBuilder();
-            // foreach(KeyValuePair<long, double> kv in res)
-            // {
-            //     sb.Append (kv.Key);
-            //     sb.Append(" : ");
-            //     sb.Append(kv.Value);
-            //     sb.AppendLine();
-            // }
-            // return sb.ToString();
         }
 
     }
