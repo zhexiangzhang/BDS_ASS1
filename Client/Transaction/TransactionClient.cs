@@ -6,14 +6,13 @@ namespace Client.Transaction
 {
     internal class TransactionClient
     {
-        int concurrencyLevel = 20;
+        int concurrencyLevel = 1;
 
         int numCustomerActor = 2000;
         int numProductActor = 100;
 
         // for experiment setting
-        int numCustomerThread = 8;
-        // int numGetTopTenThread = 8;
+        int numCustomerThread = 8;        
 
         TimeSpan runTime = TimeSpan.FromSeconds(10);    // use this time to control how long time the experiment will run
         TimeSpan topTenTaskRunTime = TimeSpan.FromSeconds(10);
@@ -66,11 +65,9 @@ namespace Client.Transaction
 
             // the top-10 customers
             Console.WriteLine($"The top-10 customers are: ");
-            var top10 = await workload.GetTopTen();
+            var top10 = await workload.GetTopTen(0);
             Console.WriteLine(top10);
             Console.WriteLine("\n ***********************************************************************");
-
-
 
 
 
@@ -78,7 +75,7 @@ namespace Client.Transaction
             // STEP 5: start tasks to get top-10 customers to stress analytics actor            
             Console.WriteLine($"Concurrency level = {concurrencyLevel}");
 
-            int submitCount = 0;
+            int transactionId = 0;
             var tasks = new List<Task>(concurrencyLevel);
 
             var cancellationToken = new CancellationTokenSource();
@@ -87,16 +84,17 @@ namespace Client.Transaction
             s.Start();
             // get the time stamp of the start of the experiment
             DateTime startTime = DateTime.Now;
-            while (submitCount < concurrencyLevel)
+            while (transactionId < concurrencyLevel)
             {
-                tasks.Add(Task.Run(() => GetTopTenAsync(cancellationToken.Token)));
-                submitCount++;
+                tasks.Add(Task.Run(() => GetTopTenAsync(transactionId, cancellationToken.Token)));
+                transactionId++;
             }
+            Console.WriteLine("Concurrency level arrived");
             while (s.Elapsed < topTenTaskRunTime)
             {
-                tasks.Add(Task.Run(() => GetTopTenAsync(cancellationToken.Token)));
-                submitCount++;
-                while (resultQueue.TryTake(out _) && s.Elapsed < topTenTaskRunTime) { }
+                tasks.Add(Task.Run(() => GetTopTenAsync(transactionId, cancellationToken.Token)));
+                transactionId++;
+                while (resultQueue.TryTake(out _) && s.Elapsed < topTenTaskRunTime) { }                
             }
             DateTime endTime = startTime.Add(topTenTaskRunTime);
 
@@ -156,13 +154,13 @@ namespace Client.Transaction
             allThreadsAreDone.Signal();
         }
 
-        async void GetTopTenAsync(CancellationToken cancellationToken)
+        async void GetTopTenAsync(int transactionId, CancellationToken cancellationToken)
         {
             // var workload = new WorkloadGenerator(numCustomerActor, numProductActor);
 
             DateTime start = DateTime.Now;
             if (cancellationToken.IsCancellationRequested) return;
-            await workload.GetTopTen();
+            await workload.GetTopTen(transactionId);
             if (cancellationToken.IsCancellationRequested) return;
             DateTime end = DateTime.Now;
             this.resultQueue.Add(1);
@@ -172,18 +170,3 @@ namespace Client.Transaction
     }
 }
 
-// dotnet run --project Server
-// Concurrency level = 1 Average execution time = 771.9999 ms Throughput = 2232.3
-// Concurrency level = 5 Average execution time = 834.5639 ms Throughput = 2000.4
-// Concurrency level = 10 Average execution time = 934.9092 ms Throughput = 2057.2
-// Concurrency level = 20 Average execution time = 784.5506 ms Throughput = 2135.1
-
-// Concurrency level = 1 Average execution time = 2034.9743 ms Throughput = 14.5
-// Concurrency level = 5 Average execution time = 1524.58 ms Throughput = 13.7
-// Concurrency level = 10 Average execution time = 1609.6113 ms Throughput = 16.7
-
-// Concurrency level = 20 Average execution time = 4951.2936 ms Throughput = 1.5
-// Concurrency level = 20 Average execution time = 178.3134 ms Throughput = 99.1 
-// Concurrency level = 20 Average execution time = 372.837 ms Throughput = 2794.2 (main)
-// Concurrency level = 20 Average execution time = 5.7549 ms Throughput = 3908.1 (random1)
-// Concurrency level = 20 Average execution time = 2.8297 ms Throughput = 5166.8 (random10)

@@ -40,10 +40,11 @@ namespace ECommerce.Olep
                     IAsyncStream<Inventory> productStream = streamProvider.GetStream<Inventory>(Constants.InventoryNamespace, checkout.productId.ToString());
                     await productStream.OnNextAsync(new Inventory(id, checkout.price, checkout.quantity));
                 }
-
-                var outStream = streamProvider.GetStream<Outcome>(Constants.OutcomeNamespace, id.ToString());
-                var outcome = new Outcome(id, checkout.productId, checkout.quantity * checkout.price, Status.INSUFFICIENT_BALANCE);
-                await outStream.OnNextAsync(outcome);
+                else { 
+                    var outStream = streamProvider.GetStream<Outcome>(Constants.OutcomeNamespace, 0);
+                    var outcome = new Outcome(id, checkout.productId, checkout.quantity * checkout.price, Status.INSUFFICIENT_BALANCE);
+                    await outStream.OnNextAsync(outcome);
+                }
             }
             catch (Exception e)
             {

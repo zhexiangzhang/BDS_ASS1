@@ -14,16 +14,15 @@ namespace Client.Transaction
 {
     internal class WorkloadGenerator
     {
+
+        readonly int numAnalyticsActor = 1;
+
         readonly int numCustomerActor;
         readonly int numProductActor;
         IClusterClient client;
         private List<IAnalyticsActor> analyticsActors;
-        
-        // private List<bool> analyticsActorsStatuses;
-        private readonly BlockingCollection<int> analyticsActorsIdleQueue;
-        
-        bool isClientConnected = false;
-        int numAnalyticsActor;
+                                
+        bool isClientConnected = false;        
 
         IDiscreteDistribution customerDistribution;       // which customer send the request
         IDiscreteDistribution productDistribution;        // which product to buy
@@ -43,9 +42,7 @@ namespace Client.Transaction
             productQtyDistribution = new DiscreteUniform(1, 100, new Random());
             productPriceDistribution = new DiscreteUniform(1, 1000, new Random());
             customerBalanceDistribution = new DiscreteUniform(1, 10000, new Random());
-            customerQtyDistribution = new DiscreteUniform(1, 10, new Random());
-
-            analyticsActorsIdleQueue = new BlockingCollection<int>();            
+            customerQtyDistribution = new DiscreteUniform(1, 10, new Random());                    
 
             // wait until the client is created and connected
             InitiateClient();
@@ -58,19 +55,14 @@ namespace Client.Transaction
             isClientConnected = true;
         }
 
-        public async Task InitAllActors(int numAnalyticsActor = 10)
+        public async Task InitAllActors()
         {
             // Initialize the grains and their statuses
-            analyticsActors = new List<IAnalyticsActor>(numAnalyticsActor);
-            this.numAnalyticsActor = numAnalyticsActor;
-            // many thread can access the same  list at the same time, so we need to use thread-safe data structure            
-            // analyticsActorsStatuses = new List<bool>(numAnalyticsActor);
+            analyticsActors = new List<IAnalyticsActor>(numAnalyticsActor);                                       
 
             for (int i = 0; i < numAnalyticsActor; i++)
             {
-                analyticsActors.Add(client.GetGrain<IAnalyticsActor>(i));
-                // add the grain to the idle queue
-                analyticsActorsIdleQueue.Add(i);
+                analyticsActors.Add(client.GetGrain<IAnalyticsActor>(i));                                
                 await analyticsActors[i].Init();
             }
             // var analyticsActor = client.GetGrain<IAnalyticsActor>(0);
@@ -130,9 +122,10 @@ namespace Client.Transaction
             return;
         }
 
-        public async Task<string> GetTopTen3()
+        public async Task<string> GetTopTen2(int transactionId)
         {
             List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(0).Top10();
+            
             StringBuilder sb = new StringBuilder();
             foreach (KeyValuePair<long, double> kv in res)
             {
@@ -144,34 +137,11 @@ namespace Client.Transaction
             return sb.ToString();
         }
 
-        public async Task<string> GetTopTen2()
+        public async Task<string> GetTopTen(int transactionId)
         {
-            StringBuilder sb = new StringBuilder();
+            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(transactionId % numAnalyticsActor).Top10();            
             
-            // Find the grain that is not currently calculating the top 10
-            int idleAnalyticsActorId = analyticsActorsIdleQueue.Take();
-            Console.WriteLine($"idleAnalyticsActorId = {idleAnalyticsActorId}");
-            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(idleAnalyticsActorId).Top10();     
-            analyticsActorsIdleQueue.Add(idleAnalyticsActorId);
-            foreach (KeyValuePair<long, double> kv in res)
-            {
-                sb.Append(kv.Key);
-                sb.Append(" : ");
-                sb.Append(kv.Value);
-                sb.AppendLine();
-            }
-            return sb.ToString();           
-        }
-
-        public async Task<string> GetTopTen()
-        {
-            StringBuilder sb = new StringBuilder();
-
-            // choose a random number from 0 to 9:
-            int idleAnalyticsActorId = new DiscreteUniform(0, numAnalyticsActor-1, new Random()).Sample();    
-            // Find the grain that is not currently calculating the top 10            
-            Console.WriteLine($"idleAnalyticsActorId = {idleAnalyticsActorId}");
-            List<KeyValuePair<long, double>> res = await client.GetGrain<IAnalyticsActor>(idleAnalyticsActorId).Top10();                   
+            StringBuilder sb = new StringBuilder();                          
             foreach (KeyValuePair<long, double> kv in res)
             {
                 sb.Append(kv.Key);
@@ -184,3 +154,27 @@ namespace Client.Transaction
 
     }
 }
+
+
+// Concurrency level = 1 Average execution time = 22.4743 ms Throughput = 205.2
+// Concurrency level = 2 Average execution time = 37.7091 ms Throughput = 464.2
+// Concurrency level = 2 Average execution time = 52.2408 ms Throughput = 638.6
+// Concurrency level = 4 Average execution time = 63.2148 ms Throughput = 1574.1
+// Concurrency level = 4 Average execution time = 158.9546 ms Throughput = 1019.8
+// Concurrency level = 4 Average execution time = 55.8784 ms Throughput = 132.9
+// Concurrency level = 4 Average execution time = 36.0386 ms Throughput = 1452.8
+// Concurrency level = 8 Average execution time = 160.4237 ms Throughput = 2372.5
+// Concurrency level = 16 Average execution time = 52.7176 ms Throughput = 494.6
+// Concurrency level = 16 Average execution time = 19.7929 ms Throughput = 229.9
+// Concurrency level = 16 Average execution time = 35.0911 ms Throughput = 299.3
+
+// Concurrency level = 1 Average execution time = 1347.0049 ms Throughput = 48094.3
+// Concurrency level = 2 Average execution time = 94.1894 ms Throughput = 121225.8
+// Concurrency level = 2 Average execution time = 2672.1471 ms Throughput = 73564.7
+// Concurrency level = 4 Average execution time = 3405.8463 ms Throughput = 45924.4
+// Concurrency level = 4 Average execution time = 185.2396 ms Throughput = 110130.5
+// Concurrency level = 4 Average execution time = 1929.4897 ms Throughput = 87537.7
+// Concurrency level = 8 Average execution time = 684.2516 ms Throughput = 101363.8
+// Concurrency level = 8 Average execution time = 67.7407 ms Throughput = 103218.3
+// Concurrency level = 16 Average execution time = 486.1393 ms Throughput = 102023
+// Concurrency level = 16 Average execution time = 88.9747 ms Throughput = 102769.2
