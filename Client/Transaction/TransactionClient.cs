@@ -96,7 +96,7 @@ namespace Client.Transaction
             {
                 tasks.Add(Task.Run(() => GetTopTenAsync(cancellationToken.Token)));
                 submitCount++;
-                while (resultQueue.TryTake(out _) && s.Elapsed < topTenTaskRunTime) { }
+                while (!resultQueue.TryTake(out _) && s.Elapsed < topTenTaskRunTime) { }
             }
             DateTime endTime = startTime.Add(topTenTaskRunTime);
 
@@ -172,14 +172,19 @@ namespace Client.Transaction
     }
 }
 
-// dotnet run --project Server
-// Concurrency level = 1 Average execution time = 771.9999 ms Throughput = 2232.3
-// Concurrency level = 5 Average execution time = 834.5639 ms Throughput = 2000.4
-// Concurrency level = 10 Average execution time = 934.9092 ms Throughput = 2057.2
-// Concurrency level = 20 Average execution time = 784.5506 ms Throughput = 2135.1
+        // Concurrency level = 1 Average execution time = 0.4896 ms Throughput = 3068.7
+        // Concurrency level = 2 Average execution time = 0.5142 ms Throughput = 3876.9
+        // Concurrency level = 4 Average execution time = 0.5461 ms Throughput = 5037.4
+        // Concurrency level = 8 Average execution time = 0.8307 ms Throughput = 5728.5
+        // Concurrency level = 16 Average execution time = 1.1999 ms Throughput = 5854.3
+        // Concurrency level = 32 Average execution time = 1.7799 ms Throughput = 5495.7
+        // Concurrency level = 64 Average execution time = 1.3145 ms Throughput = 5906.4
+        // Concurrency level = 128 Average execution time = 1.3057 ms Throughput = 5952.1
 
-// Concurrency level = 1 Average execution time = 2034.9743 ms Throughput = 14.5
-// Concurrency level = 5 Average execution time = 1524.58 ms Throughput = 13.7
-// Concurrency level = 10 Average execution time = 1609.6113 ms Throughput = 16.7
-// Concurrency level = 20 Average execution time = 913.3378 ms Throughput = 21.7
+        // Concurrency level = 1 Average execution time = 0.2431 ms Throughput = 4056.6
+        // Concurrency level = 2 Average execution time = 0.2247 ms Throughput = 5343.4
+        // Concurrency level = 4 Average execution time = 0.2318 ms Throughput = 6446.4
+        // Concurrency level = 8 Average execution time = 0.3317 ms Throughput = 6870.2
+        // Concurrency level = 16 Average execution time = 0.4681 ms Throughput = 7047.3
+        // Concurrency level = 32 Average execution time = 0.6358 ms Throughput = 7030.9
 
